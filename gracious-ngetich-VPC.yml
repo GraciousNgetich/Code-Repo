@@ -1,0 +1,120 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  EnvironmentName:
+    Description: This describes the EnvironmentName for the resources.
+    Type: String
+    Default: DE-Extract
+
+  VpcCIDR:
+    Description: This specifies the Vpc range to be used that is, CIDR notation.
+    Type: String
+    Default: 192.168.0.0/16
+
+  DataCenterPublicSubnetCIDR:
+    Type: String
+    Default: 192.168.10.0/24
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  DataCenterPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs ""
+      CidrBlock: !Ref DataCenterPublicSubnetCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: DE-Extract Data Center Subnet
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: DE-Extract Public Routes
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  DataCenterPublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref DataCenterPublicSubnet
+
+  WindowsInstanceSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupName: DE-Extract-WindowsInstanceSG
+      GroupDescription: This is a security group that uses RDP Ip Protocol.
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3389
+          ToPort: 3389
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: DE-Extract-WindowsInstanceSG
+
+  FileServerSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupName: DE-Extract-FileServerSG
+      GroupDescription: This is a security group that uses SSH Ip Protocol.
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 192.168.10.0/24
+      Tags:
+        - Key: Name
+          Value: DE-Extract-FileServerSG
+
+  FileGatewaySG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupName: DE-Extract-FileGatewaySG
+      GroupDescription: This is a security group that allows traffic from a customised range of ports.
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 1
+          ToPort: 65534
+          CidrIp: 192.168.0.0/16
+      Tags:
+        - Key: Name
+          Value: DE-Extract-FileGatewaySG
